@@ -472,6 +472,7 @@ impl Gpt {
         let tok = self.sd["wte"][token_id].clone();
         let pos = self.sd["wpe"][pos_id % self.block_size].clone();
         let mut x: Vec<Value> = tok.into_iter().zip(pos).map(|(t, p)| t + p).collect();
+        x = rmsnorm(x); // normalize after embedding (matches original)
 
         for li in 0..self.n_layer {
             // attention
