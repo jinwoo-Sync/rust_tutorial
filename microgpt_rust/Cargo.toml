@@ -1,0 +1,8 @@
+[package]
+name = "microgpt"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "microgpt"
+path = "src/main.rs"
