@@ -101,7 +101,7 @@ impl DiGraph {
 struct ValueInner {
     data:        f64,
     grad:        f64,
-    backward_fn: Box<dyn Fn()>,
+    backward_fn: Option<Box<dyn Fn()>>,  // Option으로 take() 가능
     prev:        Vec<Value>,   // input nodes that produced this node
 }
 
@@ -113,7 +113,7 @@ impl Value {
         Value(Rc::new(RefCell::new(ValueInner {
             data,
             grad: 0.0,
-            backward_fn: Box::new(|| {}),
+            backward_fn: None,  // leaf 노드는 backward 불필요
             prev: vec![],
         })))
     }
@@ -122,7 +122,7 @@ impl Value {
         Value(Rc::new(RefCell::new(ValueInner {
             data,
             grad: 0.0,
-            backward_fn: Box::new(|| {}),
+            backward_fn: None,
             prev,
         })))
     }
@@ -132,7 +132,7 @@ impl Value {
     fn add_grad(&self, g: f64)      { self.0.borrow_mut().grad += g; }
     fn set_grad(&self, g: f64)      { self.0.borrow_mut().grad = g; }
     fn set_data(&self, d: f64)      { self.0.borrow_mut().data = d; }
-    fn set_fn(&self, f: Box<dyn Fn()>) { self.0.borrow_mut().backward_fn = f; }
+    fn set_fn(&self, f: Box<dyn Fn()>) { self.0.borrow_mut().backward_fn = Some(f); }
     fn id(&self)            -> usize { Rc::as_ptr(&self.0) as usize }
 
     // ------------------------------------------------------------------
@@ -198,8 +198,19 @@ impl Value {
         self.set_grad(1.0);
 
         for node_id in order {
-            let node = &id_map[&node_id];
-            (node.0.borrow().backward_fn)();
+            let node = id_map.get(&node_id).unwrap();
+
+            // backward_fn을 take()로 꺼내서 borrow scope 종료
+            let backward = {
+                let mut inner = node.0.borrow_mut();
+                inner.backward_fn.take()
+            };
+            // 여기서 borrow_mut 해제됨
+
+            // 클로저 실행 중 RefCell 충돌 없음
+            if let Some(f) = backward {
+                f();
+            }
         }
     }
 }
@@ -434,7 +445,7 @@ impl Gpt {
         n_head:     usize,
         rng:        &mut Rng,
     ) -> Self {
-        let mat = |nout: usize, nin: usize, std: f64| -> Vec<Vec<Value>> {
+        let mut mat = |nout: usize, nin: usize, std: f64| -> Vec<Vec<Value>> {
             (0..nout).map(|_| {
                 (0..nin).map(|_| Value::new(rng.gauss(std))).collect()
             }).collect()
